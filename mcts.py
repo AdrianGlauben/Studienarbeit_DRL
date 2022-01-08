@@ -12,9 +12,11 @@ class Node:
         self.win_count = 0
         self.children = list()
         self.is_expanded = True if root else False
+        self.is_f_expanded = False # Weather or not all children are expanded
         self.is_terminal = False
         self.is_checkmate = False
-        if root == True:
+        self.checkmate_idx = None # If this node has a checkmate in its children, this is the index of that position
+        if root:
             self.make_children()
 
 
@@ -29,11 +31,14 @@ class Node:
     def is_fully_expanded(self):
         # Checks if this node is fully expanded
         # Which is the case if all children are expanded
+        if self.is_f_expanded:
+            return True
         if not self.children:
             return False
         else:
             children_status = [child.is_expanded for child in self.children]
-            return all(children_status) # True if all in list are True, False otherwise
+            self.is_f_expanded = all(children_status)
+            return self.is_f_expanded # True if all in list are True, False otherwise
 
 
     def best_child(self):
@@ -57,7 +62,7 @@ class Node:
         return f" \n #### {color} #### \n Visit Count: {self.visit_count} \n Win Count: {self.win_count} \n Number of Children: {len(self.children)} \n Expanded: {self.is_expanded}"
 
 class Vanilla_MCTS:
-    def __init__(self, expansion_budget = 100, rollout_budget = 1, c = 1, print_budget = False):
+    def __init__(self, expansion_budget = 100, rollout_budget = 1, c = np.sqrt(2), print_budget = False):
         self.print_budget = print_budget
         self.expansion_budget = expansion_budget
         self.rollout_budget = rollout_budget
@@ -75,7 +80,7 @@ class Vanilla_MCTS:
                 # If the leaf is an ending position dont perfrom rollouts
                 result = [0, 0, 0]
                 if leaf.is_checkmate:
-                    result[not leaf.color] = self.rollout_budget
+                    result[leaf.color] = self.rollout_budget
                 else:
                     result[2] = self.rollout_budget
             else:
@@ -90,25 +95,34 @@ class Vanilla_MCTS:
 
             # Budget decrementation and printing
             budget -= 1
-            if self.print_budget and budget % 50 == 0:
+            if self.print_budget and budget % 500 == 0:
                 print(f" \n ----- Expansion Budget: {budget} -----")
 
         return root.best_child()
 
 
     def traverse(self, node):
-        # Selection Phase:
-        # Traverses the currently fully expanded nodes and returns a promising leaf to expand
+        #########################
+        #### Selection Phase ####
+        #########################
+        # Traverses the currently fully expanded nodes and returns a random leaf to expand
         while node.is_fully_expanded():
+            if node.checkmate_idx is not None:
+                return node.children[node.checkmate_idx]
             children_uct = [self.uct(child) for child in node.children]
-            node = node.children[np.argmax(children_uct)]
+            child_idx = np.argmax(children_uct)
+            node = node.children[child_idx]
 
         outcome = node.board.outcome()
 
         if outcome is not None:
             node.is_terminal = True
             if outcome.winner is not None:
-                node.is_checkmate == True
+                node.is_checkmate = True
+                # Give parent node the infromation that it has a checkmate position in children,
+                # so the rest of the children dont need to be searched
+                node.parent.checkmate_idx = child_idx
+                node.parent.is_f_expanded = True
             return node
         else:
             unvisited_children = [child for child in node.children if child.is_expanded == False]
@@ -116,7 +130,9 @@ class Vanilla_MCTS:
 
 
     def rollout(self, node):
-        # Simulation/Rollout Phase:
+        ##########################################
+        #### Rollout/Simulation/Playout Phase ####
+        ##########################################
         # Uses the rollout policy to make moves until the end of the game and returns the results
 
         result = [0, 0, 0]
@@ -152,7 +168,9 @@ class Vanilla_MCTS:
 
 
     def backpropagate(self, node, result):
-        # Backpropagation Phase:
+        ###############################
+        #### Backpropagation Phase ####
+        ###############################
         # Backpropagates the results from the rollout through the path taken
         node.visit_count += np.sum(result)
         if node.color == chess.WHITE:
@@ -189,11 +207,11 @@ class Parallel_MCTS(Vanilla_MCTS):
                 self.game_end_found = False
                 return root.best_child()
 
-            # Perform a rollout for the leaf and backpropagate the result
             leaf.make_children()
             leaf.is_expanded = True
 
             ########## Parallel Processing ############
+            # Perform a rollout for the leaf and backpropagate the result
             args = [leaf for i in range(self.no_of_cpus)]
             with mp.Pool(self.no_of_cpus) as pool:
                 mp_result = pool.map(self.rollout, args)
@@ -203,7 +221,7 @@ class Parallel_MCTS(Vanilla_MCTS):
 
             # Budget decrementation and printing
             budget -= 1
-            if self.print_budget and budget % 50 == 0:
+            if self.print_budget and budget % 100 == 0:
                 print(f" \n ----- Expansion Budget: {budget} -----")
 
         return root.best_child()
