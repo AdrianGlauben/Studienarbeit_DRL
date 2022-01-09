@@ -4,12 +4,11 @@ from psutil import cpu_count
 import multiprocessing as mp
 
 class Node:
-    def __init__(self, board, parent = None, color = chess.WHITE, root = False):
+    def __init__(self, board, parent = None, root = False):
         self.board = board
         self.parent = parent
-        self.color = color # The color to move
-        self.visit_count = 0
-        self.win_count = 0
+        self.color = board.turn # The color to move
+        self.stats = [0, 0, 0] # [Blacks wins, Whites wins, Draws]
         self.children = list()
         self.is_expanded = True if root else False
         self.is_f_expanded = False # Weather or not all children are expanded
@@ -43,7 +42,7 @@ class Node:
 
     def best_child(self):
         # Returns the best child of this node by evaluating their visit_count
-        child_values = [child.visit_count for child in self.children]
+        child_values = [np.sum(child.stats) for child in self.children]
         return self.children[np.argmax(child_values)]
 
 
@@ -53,13 +52,13 @@ class Node:
         for m in self.board.legal_moves:
             board = self.board.copy()
             board.push_san(board.san(m))
-            self.children.append(Node(board, parent = self, color = not self.color))
+            self.children.append(Node(board, parent = self))
 
 
     def __str__(self):
         # Prints the statistics of this node
         color = "White" if self.color else "Black"
-        return f" \n #### {color} #### \n Visit Count: {self.visit_count} \n Win Count: {self.win_count} \n Number of Children: {len(self.children)} \n Expanded: {self.is_expanded}"
+        return f" \n #### {color} #### \n Stats: {self.stats} \n Number of Children: {len(self.children)}"
 
 class Vanilla_MCTS:
     def __init__(self, expansion_budget = 100, rollout_budget = 1, c = np.sqrt(2), print_budget = False):
@@ -80,7 +79,7 @@ class Vanilla_MCTS:
                 # If the leaf is an ending position dont perfrom rollouts
                 result = [0, 0, 0]
                 if leaf.is_checkmate:
-                    result[leaf.color] = self.rollout_budget
+                    result[not leaf.color] = self.rollout_budget
                 else:
                     result[2] = self.rollout_budget
             else:
@@ -141,10 +140,8 @@ class Vanilla_MCTS:
         while budget != 0:
             board = node.board.copy()
             winner = self.rollout_policy(board)
-            if winner == chess.WHITE:
-                result[0] += 1
-            elif winner == chess.BLACK:
-                result[1] += 1
+            if winner is not None:
+                result[winner] += 1
             else:
                 result[2] += 1
             budget -= 1
@@ -172,11 +169,7 @@ class Vanilla_MCTS:
         #### Backpropagation Phase ####
         ###############################
         # Backpropagates the results from the rollout through the path taken
-        node.visit_count += np.sum(result)
-        if node.color == chess.WHITE:
-            node.win_count += result[0]
-        elif node.color == chess.BLACK:
-            node.win_count += result[1]
+        node.stats = np.add(result, node.stats).tolist()
 
         if node.is_root():
             return
@@ -186,7 +179,10 @@ class Vanilla_MCTS:
 
     def uct(self, node):
         # UCT Selection Rule
-        return node.win_count / node.visit_count + self.c * np.sqrt(np.log(node.parent.visit_count) / node.visit_count)
+        win_count = node.stats[node.parent.color]
+        visit_count = np.sum(node.stats, axis = 0)
+        parent_visit_count = np.sum(node.parent.stats, axis = 0)
+        return win_count / visit_count + self.c * np.sqrt(np.log(parent_visit_count) / visit_count)
 
 
 
