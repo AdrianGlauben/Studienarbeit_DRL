@@ -4,7 +4,7 @@ import numpy as np
 import time
 
 board = chess.Board()
-algo = improved_mcts.MCTS(expansion_budget = 5000)
+algo = improved_mcts.MCTS_TT(expansion_budget = 5000)
 
 t0 = time.time()
 chosen = algo.search(board)
