@@ -2,14 +2,49 @@ import numpy as np
 import chess
 
 BOARD_HEIGHT = BOARD_WIDTH = 8
-NB_CHANNELS_TOTAL = 36
+NB_CHANNELS_TOTAL = 46
 NB_LAST_MOVES = 8
 
-NORMALIZE_MOBILITY = 64
 NORMALIZE_PIECE_NUMBER = 8
 NORMALIZE_50_MOVE_RULE = 50
 
 def board_to_planes(board: chess.Board, board_occurence, last_moves, normalize=True):
+    """
+    Transofroms the chess.Board representation to a plane representation.
+    See https://arxiv.org/pdf/1712.01815.pdf, p. 13 for an in depth explanation.
+
+    Feature             | Planes
+    ----
+    P1 Pieces           | 6 (ordered: Pawn, Knight, Bishop, Rook, Queen, King)
+
+    P2 Pieces           | 6
+
+    Repetitions         | 2
+
+    Last 8 Moves        | 16
+
+    No-Progress-count   | 1
+
+    Colour              | 1
+
+    P1 castling rights  | 2 (one per side of castling)
+
+    P2 castling rights  | 2
+
+    P1 Material Count   | 5 (One plane per piece type)
+
+    P2 Material Count   | 5
+    ---- 6 + 6 + 2 + 16 + 1 + 1 + 2 + 2 + 5 + 5 = 46 Planes (= NB_CHANNELS_TOTAL)
+
+    Arguments:
+        board (chess.Board): Python-chess board object.
+        board_occurence (int): Counts the times this exact board has been seen. For threefold repetititon rule.
+        last_moves (list[chess.Move]): A list conataining the last 8 moves. Contains 'None' entries if less then 9 moves played.
+        normalize (bool): If True all input planes are normalized to have values between 0 and 1.
+
+    Return:
+        planes (np.array): 8 x 8 x NB_CHANNELS_TOTAL plane representation of current board.
+    """
     planes = np.zeros((NB_CHANNELS_TOTAL, BOARD_HEIGHT, BOARD_WIDTH))
 
     # Set the player colors
@@ -77,9 +112,34 @@ def board_to_planes(board: chess.Board, board_occurence, last_moves, normalize=T
             planes[channel, :, :] = 1
         channel += 1
 
+    #### Material Count to Planes ####
+    # Channels: 36-45
+    # P1 Material Count     | 5 (One plane per piece type)
+    # P2 Material Count     | 5
+
+    for color in colors:
+        for piece_type in chess.PIECE_TYPES[:-1]:
+            material_count = len(board.pieces(piece_type, color))
+            planes[channel, :, :] = material_count / NORMALIZE_PIECE_NUMBER if normalize else material_count
+            channel += 1
+
     return planes
 
+
 def get_row_col(position, mirror=False):
+    """
+    Maps the scalar position representation from python-chess to a row, column notation.
+    Python-chess counts positions starting from 0 in the bottom left corner of the board,
+    to 63 in the top right corner.
+
+    Arguments:
+        position (int): Scalar value [0 - 63].
+        mirror (bool): Boolean to indicate if the board should be flipped since black is to move.
+
+    Returns:
+        row (int): The row of the chess piece.
+        col (int): The column of the chess piece.
+    """
     # Maps the scalar value position representation
     # from python-chess ([0, 63]) to a row, column notation.
     row = position // 8
