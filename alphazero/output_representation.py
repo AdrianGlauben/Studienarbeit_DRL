@@ -26,14 +26,14 @@ def planes_to_move_probabilities(planes, legal_moves, color):
     into a probability vector corresponding to the legal moves.
 
     Arguments:
-        planes (np.array):  AlphaZero representation. 8 x 8 x 64 array containing the move probabilities.
+        planes (np.array):  AlphaZero representation. 64 x 8 x 8 array containing the move probabilities.
                             For information on this representation see https://arxiv.org/pdf/1712.01815.pdf, p. 13.
         legal_moves (list): List of legal moves, excluding underpromotions.
         color (Optional[chess.Color]): The color which has to make a move.
 
     Return:
         probs (np.array):   Probaility vector corresponding to the legal moves.
-                            Rescaled to sum to one.
+                            Rescaled with Sotftmax.
     '''
     probs = np.zeros(len(legal_moves))
 
@@ -46,4 +46,31 @@ def planes_to_move_probabilities(planes, legal_moves, color):
         channel = MOVE_TO_CHANNEL_DICT[str(to_row - from_row) + str(to_col - from_col)]
         probs[i] = planes[channel, from_row, from_col]
 
-    return probs / np.sum(probs)
+    return np.exp(probs) / np.sum(np.exp(probs))
+
+
+def legal_moves_to_flat_planes(legal_moves, probs, color):
+    '''
+    Transforms the legal moves plus their corresponding probabilities to the planes notation.
+    Then the planes are flattened to a one dimensional vector to be the same shape as the NN policy output.
+
+    Arguments:
+        legal_moves (list): List of legal moves, excluding underpromotions.
+        probs (list): Corresponding probabilities for the legal moves.
+        color (Optional[chess.Color]): The color which has to make a move.
+
+    Return:
+        planes (np.array): List of size NB_CHANNELS_TOTAL * BOARD_HEIGHT * BOARD_WIDTH
+    '''
+    planes = np.zeros((NB_CHANNELS_TOTAL, BOARD_HEIGHT, BOARD_WIDTH), dtype=np.float32)
+
+    mirror = color == chess.BLACK
+
+    for move, prob in zip(legal_moves, probs):
+        from_row, from_col = get_row_col(move.from_square, mirror=mirror)
+        to_row, to_col = get_row_col(move.to_square, mirror=mirror)
+        # The channel can be uniquely identified by the row and column distance of the move
+        channel = MOVE_TO_CHANNEL_DICT[str(to_row - from_row) + str(to_col - from_col)]
+        planes[channel, from_row, from_col] = prob
+
+    return np.reshape(planes, NB_CHANNELS_TOTAL * BOARD_HEIGHT * BOARD_WIDTH)

@@ -1,14 +1,15 @@
 import numpy as np
 import chess
+import torch
 
 BOARD_HEIGHT = BOARD_WIDTH = 8
-NB_CHANNELS_TOTAL = 46
+NB_CHANNELS_TOTAL = 44
 NB_LAST_MOVES = 8
 
 NORMALIZE_PIECE_NUMBER = 8
 NORMALIZE_50_MOVE_RULE = 50
 
-def board_to_planes(board: chess.Board, board_occurence, last_moves, normalize=True):
+def board_to_planes(board: chess.Board, last_moves, normalize=True):
     """
     Transofroms the chess.Board representation to a plane representation.
     See https://arxiv.org/pdf/1712.01815.pdf, p. 13 for an in depth explanation.
@@ -18,8 +19,6 @@ def board_to_planes(board: chess.Board, board_occurence, last_moves, normalize=T
     P1 Pieces           | 6 (ordered: Pawn, Knight, Bishop, Rook, Queen, King)
 
     P2 Pieces           | 6
-
-    Repetitions         | 2
 
     Last 8 Moves        | 16
 
@@ -34,18 +33,17 @@ def board_to_planes(board: chess.Board, board_occurence, last_moves, normalize=T
     P1 Material Count   | 5 (One plane per piece type)
 
     P2 Material Count   | 5
-    ---- 6 + 6 + 2 + 16 + 1 + 1 + 2 + 2 + 5 + 5 = 46 Planes (= NB_CHANNELS_TOTAL)
+    ---- 6 + 6 + 16 + 1 + 1 + 2 + 2 + 5 + 5 = 44 Planes (= NB_CHANNELS_TOTAL)
 
     Arguments:
         board (chess.Board): Python-chess board object.
-        board_occurence (int): Counts the times this exact board has been seen. For threefold repetititon rule.
         last_moves (list[chess.Move]): A list conataining the last 8 moves. Contains 'None' entries if less then 9 moves played.
         normalize (bool): If True all input planes are normalized to have values between 0 and 1.
 
     Return:
         planes (np.array): 8 x 8 x NB_CHANNELS_TOTAL plane representation of current board.
     """
-    planes = np.zeros((NB_CHANNELS_TOTAL, BOARD_HEIGHT, BOARD_WIDTH))
+    planes = np.zeros((NB_CHANNELS_TOTAL, BOARD_HEIGHT, BOARD_WIDTH), dtype=np.float32)
 
     # Set the player colors
     p1 = board.turn
@@ -67,17 +65,6 @@ def board_to_planes(board: chess.Board, board_occurence, last_moves, normalize=T
                 row, col = get_row_col(pos, mirror=mirror)
                 planes[channel, row, col] = 1
             channel += 1
-
-    #### Repetitions to Planes ####
-    # Sets how often the position has already occured, for 3 fold repetition Rule.
-    # Two channels: Ones in the first channel if one repetition occured,
-    #               ones in the second channel if two occured.
-    # Channels: 12 - 13
-    if board_occurence == 1:
-        planes[channel, :, :] = 1
-    elif board_occurence == 2:
-        planes[channel + 1, :, :] = 1
-    channel += 2
 
     #### Last 8 Moves to Planes ####
     # Two planes per move. One plane for the FROM square and one for the TO square,
@@ -123,7 +110,7 @@ def board_to_planes(board: chess.Board, board_occurence, last_moves, normalize=T
             planes[channel, :, :] = material_count / NORMALIZE_PIECE_NUMBER if normalize else material_count
             channel += 1
 
-    return planes
+    return torch.from_numpy(planes)
 
 
 def get_row_col(position, mirror=False):

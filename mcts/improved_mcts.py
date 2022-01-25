@@ -34,6 +34,8 @@ class DummyNode():
         def visit_count(self, count):
             self.parent.child_visits[self.move] = count
 
+
+
 class Node():
     def __init__(self, board, move = 0, parent = DummyNode()):
         self.board = board
