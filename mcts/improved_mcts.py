@@ -1,8 +1,6 @@
 ################################################################
 #### https://www.moderndescartes.com/essays/deep_dive_mcts/ ####
 ################################################################
-import collections
-import math
 import numpy as np
 import chess
 import time
@@ -17,22 +15,6 @@ class DummyNode():
         self.child_stats = np.array([[INIT_STATS, INIT_STATS]], dtype=np.float32)
         self.child_visits = np.array([INIT_VISITS], dtype=np.float32)
         self.legal_moves = None
-
-        @property
-        def stats(self):
-            return self.parent.child_stats[self.move]
-
-        @stats.setter
-        def stats(self, statistic):
-            self.parent.child_stats[self.move] = statistic
-
-        @property
-        def visit_count(self):
-            return self.parent.child_visits[self.move]
-
-        @visit_count.setter
-        def visit_count(self, count):
-            self.parent.child_visits[self.move] = count
 
 
 
@@ -161,42 +143,3 @@ class MCTS():
             node.children[move] = Node(
                 board, move = move, parent = node)
         return node.children[move]
-
-
-
-class MC_RAVE(MCTS):
-    def __init__(self, expansion_budget = 22, rollout_budget = 1, c = np.sqrt(2), print_step = None):
-        super().__init__(expansion_budget, rollout_budget, c, print_step)
-        self.tranpositions = dict()
-
-
-
-
-#### DO NOT USE, IMPLEMENTATION IS INCORRECT ####
-class MCTS_TT(MCTS):
-    def __init__(self, expansion_budget = 22, rollout_budget = 1, c = np.sqrt(2), print_step = None):
-        super().__init__(expansion_budget, rollout_budget, c, print_step)
-        self.tranpositions = dict()
-
-    def maybe_add_child(self, node, move):
-        if move not in node.children:
-            board = node.board.copy()
-            board.push(node.legal_moves[move])
-
-            board_id = board.board_fen() + ' ' + str(node.color) # Gets the board identifying part of the fen representation
-            new_node = Node(board, move = move, parent = node)
-            if board_id in self.tranpositions:
-                # Update new node with known Statistics
-                self.use_transposition_stats(self.tranpositions[board_id], new_node)
-            else:
-                self.tranpositions[board_id] = new_node
-
-            node.children[move] = new_node
-        return node.children[move]
-
-    def use_transposition_stats(self, known_node, new_node):
-        new_node.children = known_node.children
-        new_node.checkmate_idx = known_node.checkmate_idx
-        new_node.child_stats = known_node.child_stats
-        new_node.child_visits = known_node.child_visits
-        self.backpropagate(known_node.stats, known_node.visit_count, new_node)

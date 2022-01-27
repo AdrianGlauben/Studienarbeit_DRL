@@ -3,19 +3,19 @@ import torch
 import torch.nn as nn
 import numpy as np
 import chess
-from input_representation import board_to_planes
+from MCTS_search import MCTS
+from net import AlphaZeroResNet
+import time
 
 board = chess.Board()
-dummy1 = board_to_planes(board, [None] * 8)
-dummy2 = board_to_planes(board, [None] * 8)
-dummy = torch.empty((2, 44, 8, 8))
-dummy[0] = dummy1
-dummy[1] = dummy2
+net = AlphaZeroResNet(44, 128, num_res_blocks=19)
+algo = MCTS(net, expansion_budget=800)
 
-a0 = net.AlphaZeroResNet(44, 128)
+t0 = time.time()
+chosen_child = algo.search(board)
+t1 = time.time()
 
-value, policy = a0(dummy)
-print(value)
-np_policy = policy.detach().numpy()
-print(np.max(np_policy))
-print(policy)
+print(t1 - t0)
+print(chosen_child)
+print(algo.root.child_visits)
+print(algo.root.child_total_values)
