@@ -2,6 +2,7 @@ import numpy as np
 import chess
 import torch
 
+
 BOARD_HEIGHT = BOARD_WIDTH = 8
 NB_CHANNELS_TOTAL = 44
 NB_LAST_MOVES = 8

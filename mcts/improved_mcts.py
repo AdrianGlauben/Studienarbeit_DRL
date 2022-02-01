@@ -32,14 +32,15 @@ class Node():
     This class represents the nodes with which the search tree is built.
 
     Propeties:
-        board (chess.Board): A python chess representation of the current game state.
-        color ([1, 0]): One if the color to move is white, 0 if its black.
-        move (int): The index of the move that was played to get this position.
-        is_expanded (bool): False if this node has not been expanded yet. True if it has. Expanded means a rollout was conducted from this node.
-        parent (Node): A reference to the parent node.
+        board (chess.Board):    A python chess representation of the current game state.
+        color ([1, 0]):         One if the color to move is white, 0 if its black.
+        move (int):             The index of the move that was played to get this position.
+        is_expanded (bool):     False if this node has not been expanded yet. True if it has. Expanded means a rollout was conducted from this node.
+        parent (Node):          A reference to the parent node.
         legal_moves (list(chess.Move)): A list of the legal moves for the current game state.
-        children (dict): Contains references to the children. Keys are the move indicies of the children.
-        checkmate_idx (int): If this node has a checkmate in its children, this is the index of the move leading to the checkmate.
+        children (dict):        Contains references to the children. Keys are the move indicies of the children.
+        checkmate_idx (int):    If this node has a checkmate in its children, this is the index of the move leading to the checkmate.
+        is_terminal (bool):     Indicates wether or not the child is a terminal position.
         child_stats (np.array): Array of shape (number of children, 2) where for each child the win counts for black and white are tracked. Black is index 0, white is index 1.
         child_visits (np.array): An array of shape (number of children,) where the visit counts of the children are tracked.
     '''
@@ -52,6 +53,7 @@ class Node():
         self.legal_moves = list(board.legal_moves)
         self.children = dict()
         self.checkmate_idx = None
+        self.is_terminal = False
         # Initializing these arrays whith arbitrary but very large numbers will make sure, that all children are expanded.
         self.child_stats = np.full([len(self.legal_moves), 2], INIT_STATS, dtype=np.float32)
         self.child_visits = np.full([len(self.legal_moves)], INIT_VISITS, dtype=np.float32)
@@ -129,7 +131,17 @@ class Node():
         Return:
             (node): The child with the highest visit count.
         '''
-        return self.children[np.argmax(self.child_visits)]
+        try:
+            index = np.argmax(self.child_visits)
+            child = self.children[index]
+        except:
+            print(self)
+            print(self.board)
+            print(self.child_visits)
+            print(self.children)
+            exit()
+        return child
+
 
     def __str__(self):
         '''
@@ -150,6 +162,7 @@ class MCTS():
         rollout_budget (int): Specifies how many rollouts should be performed at the leafs.
         c (float): The exploration-exploitation parameter used in the UCT formula. Higher values mean more exploration.
         print_step (int): If not None the number of performed expansions will pe printed every print_step amount of steps.
+        root (Node): Holds the root of the ongoing search.
     '''
     def __init__(self, expansion_budget = 22, rollout_budget = 1, c = np.sqrt(2), print_step = None):
         self.expansion_budget = expansion_budget
@@ -158,11 +171,24 @@ class MCTS():
         self.print_step = print_step
         self.root = None
 
-    def search(self, board):
+    def search(self, board=None, use_exisitng_node=None):
         '''
         The main loop conducting the search.
+
+        Arguments:
+            board (chess.Board): A python chess board.
+            use_exisitng_node (Node): If this is given the search will continue on the given tree instead of building a new tree.
+                                        This is used in self play and evaluation to not build a new tree after every move,
+                                        but rather reuse a subtree from the previous search.
+
+        Return:
+            (Node): The most promising child of the root according to the conducted search.
         '''
-        self.root = Node(board)
+        if use_exisitng_node is not None:
+            self.root = use_exisitng_node
+        else:
+            self.root = Node(board)
+
         for i in range(self.expansion_budget):
             leaf = self.traverse(self.root)
             rollout_result = self.rollout(leaf)
@@ -173,22 +199,50 @@ class MCTS():
                 print(f'----- Expansion Step: {i} -----')
         return self.root.most_visited_child()
 
+
     def traverse(self, node):
+        '''
+        Traverses down the current tree by selecting nodes according to the UCT formula implemented in Node.best_child().
+
+        Arguments:
+            node (Node): The tree is always traversed starting from the root. Therefore this is always the root of the tree.
+
+        Return:
+            current (Node): This is a leaf of the current tree. Particularly the one chosen by traversing the tree according to the UCT formula.
+        '''
         current = node
         while current.is_expanded:
             if current.checkmate_idx is not None:
                 current = current.children[current.checkmate_idx]
                 break
+            elif current.is_terminal:
+                break
             else:
                 current = self.maybe_add_child(current, current.best_child(self.c))
 
         # If the leaf is a terminal position, update its flags and return it
-        if current.board.is_checkmate():
-            current.parent.checkmate_idx = current.move
+        outcome = current.board.outcome()
+        if outcome is not None:
+            current.is_terminal = True
+            if outcome.termination == 1: # If it is a checkmate
+                current.parent.checkmate_idx = current.move
+
 
         return current
 
+
     def rollout(self, node):
+        '''
+        Plays a number of games defined by the rollout_budget, starting from the position corresponding to the given node.
+        Moves are played according to the rollout policy. Return is the result of the game played.
+
+        Arguments:
+            node (Node): The leaf from which a rollout should be performed.
+
+        Return:
+            result (np.array): An array of size 3 containing the follwing statistics of the performed rollouts:
+                                [No. wins for Black, No. of wins for White, No. of Draws]
+        '''
         result = np.array([0, 0, 0]) # [Blacks wins, Whites wins, Draws]
 
         for _ in range(self.rollout_budget):
@@ -201,14 +255,36 @@ class MCTS():
                 result[2] += 1
         return result
 
+
     def rollout_policy(self, board):
+        '''
+        Plays a game from a given starting position to the end. This implementation plays random moves.
+
+        Arguments:
+            board (chess.Board): The current board position from which a game should be played.
+
+        Returns:
+            winner (Optional[chess.COLOR]): The winner of the rollout.
+                                            chess.WHITE if white wins, chess.BLACK if black wins, None for outcomes other than checkmate.
+
+        '''
         # Random games
         while not board.is_game_over():
             move = np.random.choice([m for m in board.legal_moves])
             board.push(move)
         return board.outcome().winner
 
+
     def backpropagate(self, stats, visits, node):
+        '''
+        Backpropagates the result from the rollout, along the path taken by the traverse function. On the way visit counts and win counts are updated.
+
+        Arguments:
+            stats (np.array): Array of size 2 containing the wins for black and white respectively:
+                                [No. of wins for Black, No. of wins for White]
+            visits (int): Essentially this is just the rollout_budget. So the number of games played during rollout.
+            node (Node): The leaf node from which backpropagation should be started.
+        '''
         if node.parent is None:
             return
 
@@ -222,7 +298,19 @@ class MCTS():
 
         self.backpropagate(stats, visits, node.parent)
 
+
     def maybe_add_child(self, node, move):
+        '''
+        This function is used to add new nodes to the current tree.
+        It checks if the move chosen by the UCT formula already has a corresponding node in the tree, if so it returns that node, if not it adds a node.
+
+        Arguments:
+            node (Node): The node to which a new child should be added.
+            move (int): The index of the move chosen by the UCT formula.
+
+        Returns:
+            (Node): Either an existing node corresponding to the move or a newly added node.
+        '''
         if move not in node.children:
             board = node.board.copy()
             board.push(node.legal_moves[move])
