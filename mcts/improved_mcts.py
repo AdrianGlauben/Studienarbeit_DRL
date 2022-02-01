@@ -9,7 +9,16 @@ INIT_STATS = 10e+11
 INIT_VISITS = 10e+9
 
 class DummyNode():
-    # A dummy node to serve as parent for the root, holding its statistics
+    '''
+    This class serves as a dummy to hold the statistics of the root node. The roots parent is set to be an instance of this class.
+    This is needed since in this implementation the parent node holds the statistics of its children.
+
+    Propeties:
+        parent (None): This always holds None to identify it as the end point in the backpropagation.
+        child_stats (np.array): Holds the win counts for black and white starting from the root state. White has index 1 and black index 0.
+        child_visits (np.array): Holds the visit count of the root node.
+        legal_moves (None): This always holds None, but needs to be available for printing the root node.
+    '''
     def __init__(self):
         self.parent = None
         self.child_stats = np.array([[INIT_STATS, INIT_STATS]], dtype=np.float32)
@@ -19,6 +28,21 @@ class DummyNode():
 
 
 class Node():
+    '''
+    This class represents the nodes with which the search tree is built.
+
+    Propeties:
+        board (chess.Board): A python chess representation of the current game state.
+        color ([1, 0]): One if the color to move is white, 0 if its black.
+        move (int): The index of the move that was played to get this position.
+        is_expanded (bool): False if this node has not been expanded yet. True if it has. Expanded means a rollout was conducted from this node.
+        parent (Node): A reference to the parent node.
+        legal_moves (list(chess.Move)): A list of the legal moves for the current game state.
+        children (dict): Contains references to the children. Keys are the move indicies of the children.
+        checkmate_idx (int): If this node has a checkmate in its children, this is the index of the move leading to the checkmate.
+        child_stats (np.array): Array of shape (number of children, 2) where for each child the win counts for black and white are tracked. Black is index 0, white is index 1.
+        child_visits (np.array): An array of shape (number of children,) where the visit counts of the children are tracked.
+    '''
     def __init__(self, board, move = 0, parent = DummyNode()):
         self.board = board
         self.color = 1 if board.turn else 0
@@ -28,39 +52,89 @@ class Node():
         self.legal_moves = list(board.legal_moves)
         self.children = dict()
         self.checkmate_idx = None
-        # Initializing these arrays whith arbitrary but very large numbers will make sure, that all children are expanded
+        # Initializing these arrays whith arbitrary but very large numbers will make sure, that all children are expanded.
         self.child_stats = np.full([len(self.legal_moves), 2], INIT_STATS, dtype=np.float32)
         self.child_visits = np.full([len(self.legal_moves)], INIT_VISITS, dtype=np.float32)
 
+
     @property
     def stats(self):
+        '''
+        Gets the stats of the node. This is necessary since the nodes don't know their own stats only his parent does.
+        '''
         return self.parent.child_stats[self.move]
+
 
     @stats.setter
     def stats(self, statistic):
+        '''
+        Updates the stats for this node, by updating the child stats of its parent.
+        '''
         self.parent.child_stats[self.move] = statistic
+
 
     @property
     def visit_count(self):
+        '''
+        Gets the visit count for this node.
+        '''
         return self.parent.child_visits[self.move]
+
 
     @visit_count.setter
     def visit_count(self, count):
+        '''
+        Updates the visit count of this node.
+        '''
         self.parent.child_visits[self.move] = count
 
+
     def children_win_ratio(self):
+        '''
+        Calculates the exploitation part of the UCT formula for all children. Q = wins / visits.
+
+        Return:
+            (np.array): Array of size (number of children,) containing the win ratio (aka the exploitation part of UCT) for each child.
+        '''
         return self.child_stats[:,self.color] / self.child_visits
 
+
     def children_exploration_factor(self):
+        '''
+        Calculates the exploration part of the UCT formula for all children. U = sqrt(parent visits / child visits).
+
+        Return:
+            (np.array): Array of size (number of children,) containing the calculation of the explortation part for each child.
+        '''
         return np.sqrt(np.log(self.visit_count) / self.child_visits)
 
+
     def best_child(self, c):
+        '''
+        Applies the UCT formula by summing over the exploration and exploitation part.
+
+        Arguments:
+            c (float): The parameter governing the trade off between exploration and exploitation. Higher value means more exploration.
+
+        Return:
+            (int): The index of the best child according to the UCT value.
+        '''
         return np.argmax(self.children_win_ratio() + c * self.children_exploration_factor())
 
+
     def most_visited_child(self):
+        '''
+        Returns the most visited child. This is used at the end of a search to return the node corresponding to the move that should be played.
+
+        Return:
+            (node): The child with the highest visit count.
+        '''
         return self.children[np.argmax(self.child_visits)]
 
     def __str__(self):
+        '''
+        Print function for the node. This prints the color, statistics, visit count, number of children, last move played and checkmate index.
+        '''
         color = 'White' if self.color == 1 else 'Black'
         move = 'Starting Position' if self.parent.legal_moves is None else self.parent.legal_moves[self.move]
         return f'\n #### {color} #### \n Statistics: {self.stats} \n Visit Count: {self.visit_count} \n Number of Children: {len(self.legal_moves)} \n Last Move: {move} \n Checkmate Index: {self.checkmate_idx} \n'
@@ -68,6 +142,15 @@ class Node():
 
 
 class MCTS():
+    '''
+    This class contains the MCTS search.
+
+    Properties:
+        expansion_budget (int): Specifies how many nodes should be expanded to conduct the search.
+        rollout_budget (int): Specifies how many rollouts should be performed at the leafs.
+        c (float): The exploration-exploitation parameter used in the UCT formula. Higher values mean more exploration.
+        print_step (int): If not None the number of performed expansions will pe printed every print_step amount of steps.
+    '''
     def __init__(self, expansion_budget = 22, rollout_budget = 1, c = np.sqrt(2), print_step = None):
         self.expansion_budget = expansion_budget
         self.rollout_budget = rollout_budget
@@ -76,6 +159,9 @@ class MCTS():
         self.root = None
 
     def search(self, board):
+        '''
+        The main loop conducting the search.
+        '''
         self.root = Node(board)
         for i in range(self.expansion_budget):
             leaf = self.traverse(self.root)

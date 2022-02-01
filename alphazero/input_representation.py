@@ -110,7 +110,7 @@ def board_to_planes(board: chess.Board, last_moves, normalize=True):
             planes[channel, :, :] = material_count / NORMALIZE_PIECE_NUMBER if normalize else material_count
             channel += 1
 
-    return torch.from_numpy(planes)
+    return torch.from_numpy(planes)[None, :]
 
 
 def get_row_col(position, mirror=False):
