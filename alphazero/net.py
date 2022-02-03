@@ -8,6 +8,9 @@ import torch.nn as nn
 from collections import OrderedDict
 from functools import partial
 
+
+# For an explanation to all the basic parts of a ResNet refer to: https://github.com/FrancescoSaverioZuppichini/ResNet
+
 class _Conv2dAuto(nn.Conv2d):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -103,6 +106,15 @@ class _ResNetLayer(nn.Module):
 
 
 class _ValueHead(nn.Module):
+    '''
+    This class implements the value head of the dual headed AlphaZeroResNet.
+
+    Properties:
+        in_features (int): The number of input features for the conolutional layer.
+        channels (int): The number of channels the convolutional layer should have.
+        fc_size (int): The number of outputs the first linear layer should have.
+        activation (torch.nn): The activation function that should be used.
+    '''
     def __init__(self, in_features, channels, fc_size, activation=nn.ReLU):
         super().__init__()
         self.conv_block = nn.Sequential(
@@ -126,6 +138,15 @@ class _ValueHead(nn.Module):
 
 
 class _PolicyHead(nn.Module):
+        '''
+        This class implements the policy head of the dual headed AlphaZeroResNet.
+
+        Properties:
+            in_features (int): The number of input features for the conolutional layer.
+            channels (int): The number of channels the convolutional layer should have.
+            n_labels (int): The number of labels the policy output should have. For my chosen representation this should always be 4096.
+            activation (torch.nn): The activation function that should be used.
+        '''
     def __init__(self, in_features, channels, n_labels, activation=nn.ReLU):
         super().__init__()
         self.block = nn.Sequential(
@@ -147,6 +168,18 @@ class _PolicyHead(nn.Module):
 
 
 class AlphaZeroResNet(nn.Module):
+    '''
+    This class combines the body and heads to the full neural network.
+
+    Properties:
+        in_channels (int): The number of feature planes used in the input representation.
+        block_channels (int): The number of channels each convolutional layer in the body of the network should have.
+        n_labels (int): The number of labels the policy output should have. For my chosen representation this should always be 4096.
+        channels_value_head (int): The number of channels the convolutional layer in the value head should have.
+        fc_size_value_head (int): The number of outputs the first linear layer of the value head should have.
+        channels_policy_head (int): The number of layers the convolutional layer in the policy head should have.
+        num_res_blocks (int): The number of residual blocks the body should be built with.
+    '''
     def __init__(
         self,
         in_channels,
@@ -156,7 +189,6 @@ class AlphaZeroResNet(nn.Module):
         fc_size_value_head = 128,
         channels_policy_head = 4,
         num_res_blocks = 8,
-        bn_mom = 0.9,
         *args,
         **kwargs
     ):

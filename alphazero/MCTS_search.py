@@ -178,7 +178,7 @@ class MCTS():
         play_mode (bool): If this is True moves are always selected by root.most_visited_child().
         noise_alpha (float): The alpha parameter for the Dirichlet noise.
         noise_epsilon (float): A paramter specified the ratio between the cumpted priors and the added noise.
-        c (float): The exploration-exploitation parameter used in the UCT formula. Higher values mean more exploration.
+        c (float): The exploration-exploitation parameter used in the pUCT formula. Higher values mean more exploration.
         cut_off (int): The number of full moves after which the chosen child is not sampled anymore. See: Node.sample_child.
     '''
     def __init__(self, net, expansion_budget = 22, device=torch.device('cpu'), play_mode=False, noise_alpha=0.3, noise_epsilon=0.25, c = 2.5, cut_off=10):

@@ -9,12 +9,39 @@ import time
 import pandas as pd
 
 def get_priors(visits, legal_moves, color):
-    # Numerically stable softmax
+    '''
+    Helper function for getting the priors which are used for training the neural network.
+
+    Arguments:
+        visits (np.array): Contains the visit counts for the children correspondig to the legal moves.
+        legal_moves (list(chess.MOVE)): A list of all possible legal moves.
+        color (Optional[chess.COLOR]): Either chess.WHITE or chess.BLACK.
+
+    Return:
+        (np.array): A vetor of with 4096 entries containing the probabilities according to the visit count for all legal moves.
+                    See alphazero.output_representation for further explanation on this representation.
+    '''
     probs = visits / np.sum(visits)
     return legal_moves_to_flat_planes(legal_moves, probs, color)
 
 
 def self_play(model, expansions_per_move, device):
+    '''
+    This plays a game in selfplay move, using the given model and device.
+
+    Arguments:
+        model (AlphaZeroResNet): The model with which the neural network evaluation should be peformed.
+        expansions_per_move (int): The number of nodes that should be expanded before the MCTS decides on a move to play.
+        device (torch.device()): The device on which the neural network evaluation should be performed.
+
+    Returns:
+        states (list()): All states that were chosen by the search.
+        values (np.array): The values correspondig to the states.
+                            Obtained by making a list of the outcome of the game containing the values from the perspective from the player at time step t.
+        priors (np.array): The priors correspondig to the states. Entries are obtained by the function get_priors().
+        outcome (chess.Outcome): The outcome of the self play game.
+        move_count (int): The full move count after which the game ended.
+    '''
     priors = list()
     states = list()
 
@@ -53,6 +80,17 @@ def self_play(model, expansions_per_move, device):
 
 
 def update_model(states, values, priors, model, optimizer, device):
+    '''
+    This function updates the given model, using the given optimizer and device.
+    Updates are performed using the training data obtained from one self play game.
+
+    Arguments:
+        states (list()): The list of states chosen in self play.
+        values (np.array): The correspondig values.
+        priors (np.array): The correspondig priors.
+        model (AlphaZeroResNet): The model that should be trained.
+        device (torch.device()): The device the model should be trained on.
+    '''
     for state, value, prior in zip(states, values, priors):
         value_prediction, prior_prediction = model(state.to(device))
         value = torch.FloatTensor([value]).to(device)
